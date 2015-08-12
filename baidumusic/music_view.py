@@ -77,14 +77,18 @@ class MusicView(TreeView):
     
     def on_music_view_double_click(self, widget, item, colume, x, y):
         if item:
+            print "double click", widget, item, colume, x, y
             song = item.get_song()
+            print song
             self.request_song(song, play=True)
+            
     
     def on_music_view_press_return(self, widget, items):
         if items:
             song = items[0].get_song()
             self.request_song(song, play=True)
-            
+            print "press return", widget, items
+
     def on_music_view_right_press_items(self, widget, x, y, current_item, select_items):
         if current_item and select_items:
             if len(select_items) > 1:
@@ -177,13 +181,16 @@ class MusicView(TreeView):
     def emit_add_signal(self):
         self.emit("begin-add-items")
     
-    def request_song(self, song, play=True):        
+    def request_song(self, song, play=True):   
+        print "request song", song, play
         if self.adjust_uri_expired(song):
+            print "adjust uri expired"
             self.request_thread_id += 1
             thread_id = copy.deepcopy(self.request_thread_id)
             utils.ThreadFetch(
                 fetch_funcs=(bplayer.request_songinfo, (song,)),
-                success_funcs=(self.render_play_song, (play, thread_id))
+                success_funcs=(self.render_play_song, (play, thread_id)),
+                fail_funcs=(self.error_play_song, (song,))
                 ).start()
         else:    
             self.play_song(song, play=True)
@@ -200,7 +207,8 @@ class MusicView(TreeView):
             return True
         return False
             
-    def play_song(self, song, play=False):    
+    def play_song(self, song, play=False):
+        print "play song", song
         if not song: return None        
         
         # update song info
@@ -231,6 +239,11 @@ class MusicView(TreeView):
         song["fetch_time"] = time.time()
         self.play_song(song, play)
     
+    def error_play_song(self, song):
+        print "error play song"
+        self.set_highlight_song(song)
+        self.get_next_song()
+
     def get_songs(self):    
         songs = []
         self.update_item_index()
@@ -274,10 +287,22 @@ class MusicView(TreeView):
         if SongItem(song) in self.items:
             self.items[self.items.index(SongItem(song))].update(song, True)
             
-    def get_next_song(self, maunal=False):        
+    # 获取下一首歌曲，已验证，但有时会报异常 
+    def get_next_song(self, maunal=False):  
+        print "get next song"
         if len(self.items) <= 0:
             return 
         
+        while True: # 这里增加一个循环，如果有异常时就会自动循环下一首，而不会中断在当前位置
+            try:
+                highlight_item = self.highlight_next()
+                self.request_song(highlight_item.get_song(), play=True)
+                return
+            except Exception, e:
+                print e
+                pass
+               
+    def highlight_next(self):
         if self.highlight_item:
             if self.highlight_item in self.items:
                 current_index = self.items.index(self.highlight_item)
@@ -288,9 +313,8 @@ class MusicView(TreeView):
             else:    
                 highlight_item = self.items[0]
         else:        
-            highlight_item = self.items[0]
-            
-        self.request_song(highlight_item.get_song(), play=True)
+            highlight_item = self.items[0] 
+        return highlight_item
     
     def get_previous_song(self):
         if len(self.items) <= 0:
